@@ -26,7 +26,7 @@ torch.manual_seed(42)
 num_workers = 2 if torch.cuda.is_available() else 0
 
 n_epochs = 1000
-batch_size = 128
+batch_size = 256
 patience = 20
 
 if torch.cuda.is_available() or torch.backends.mps.is_available():
@@ -40,11 +40,13 @@ k_folds = 5
 kfold = KFold(n_splits=k_folds, shuffle=True)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+print("Using device {}.".format(device))
 
 # hyperparameters = [{"model": [len(vocab), 512, 256, 32, 10], "lr": 2e-3, "l2": 1e-4, "dropout": 0.25}]
 hyperparameter_df = pd.DataFrame([], columns=["model_size", "lr", "l2", "dropout", "num_times", "del_p", "synonym_p",
                                               "train_losses", "validation_acc", "validation_f1", "confusion_matrices"])
-hyperparameter_df.loc[-1] = [[512, 32], 2e-3, 1e-4, 0.25, 1, 0.0, 0.0, [], [], [], []]
+hyperparameter_df.loc[-1] = [[512, 32], 2e-3, 1e-4, 0.25, 1, 0.1, 0.1, [], [], [], []]
+hyperparameter_df.loc[-1] = [[1024, 256, 64], 1e-3, 3e-5, 0.4, 2, 0.1, 0.1, [], [], [], []]
 
 
 for hyperparameter_set in hyperparameter_df.itertuples():
