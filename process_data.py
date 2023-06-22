@@ -50,9 +50,11 @@ def get_filtered_corpus(summaries, vocab):
 
 # This function does a onehot encoding of our genres
 def to_categorical(array):
-    unique, inverse = np.unique(array, return_inverse=True)
-    onehot = np.eye(unique.shape[0])[inverse]
-    return onehot
+    # unique, inverse = np.unique(array, return_inverse=True)
+    # onehot = np.eye(unique.shape[0], dtype=np.float32)[inverse]
+    # return onehot
+
+    return np.unique(array, return_inverse=True)[1]
 
 
 # This is a class which defines a custom dataset for working with TF-IDF data
@@ -67,6 +69,6 @@ class TF_IDF_Dataset(torch.utils.data.Dataset):
 
     # Gets the value at certain coordinates
     def __getitem__(self, index):
-        X = self.X[index].float()
-        Y = self.Y[index].float()
+        X = self.X[index]
+        Y = self.Y[index]
         return X, Y

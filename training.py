@@ -26,11 +26,11 @@ torch.manual_seed(42)
 num_workers = 2 if torch.cuda.is_available() else 0
 
 n_epochs = 1000
-batch_size = 256
+batch_size = 512
 patience = 20
 
 if torch.cuda.is_available() or torch.backends.mps.is_available():
-    loader_args = dict(shuffle=True, batch_size=batch_size, num_workers=num_workers, pin_memory=True)
+    loader_args = dict(shuffle=True, batch_size=batch_size)
 else:
     loader_args = dict(shuffle=True, batch_size=128)
 
@@ -45,8 +45,16 @@ print("Using device {}.".format(device))
 # hyperparameters = [{"model": [len(vocab), 512, 256, 32, 10], "lr": 2e-3, "l2": 1e-4, "dropout": 0.25}]
 hyperparameter_df = pd.DataFrame([], columns=["model_size", "lr", "l2", "dropout", "num_times", "del_p", "synonym_p",
                                               "train_losses", "validation_acc", "validation_f1", "confusion_matrices"])
-hyperparameter_df.loc[-1] = [[512, 32], 2e-3, 1e-4, 0.25, 1, 0.1, 0.1, [], [], [], []]
-hyperparameter_df.loc[-1] = [[1024, 256, 64], 1e-3, 3e-5, 0.4, 2, 0.1, 0.1, [], [], [], []]
+
+model_sizes = [[512, 32], [1024, 256, 64], [1024, 512, 256, 64, 32], [128]]
+learning_rates = [1e-5, 3e-5, 1e-4, 3e-4, 1e-3, 3e-3, 1e-2]
+l2s = [0.0, 1e-5, 3e-5, 1e-4, 3e-4, 1e-3]
+dropouts = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
+num_times = [1, 2, 5]
+del_ps = [0.0, 0.1, 0.2, 0.5]
+synonym_ps = [0.0, 0.1, 0.2, 0.5]
+hyperparameter_df.loc[-1] = [[512, 32], 2e-3, 1e-4, 0.25, 1, 0.1, 0.0, [], [], [], []]
+# hyperparameter_df.loc[-1] = [[1024, 256, 64], 1e-3, 3e-5, 0.4, 2, 0.0, 0.0, [], [], [], []]
 
 
 for hyperparameter_set in hyperparameter_df.itertuples():
@@ -141,6 +149,7 @@ for hyperparameter_set in hyperparameter_df.itertuples():
             current_loss = 0.0
 
             network.train()
+            print("Training...")
             # Iterate over the DataLoader for training data
             for i, data in enumerate(train_loader, 0):
                 # print(f'Batch {i+1}')

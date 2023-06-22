@@ -5,7 +5,7 @@ import numpy as np
 # corpus must be a list of dicts of form (token: occurences)
 # vocab must be a dict of form (token: documents in corpus containing token)
 def preprocess_tf_idf(corpus, vocab):
-    processed = np.zeros((len(corpus), len(vocab)))
+    processed = np.zeros((len(corpus), len(vocab)), dtype=np.float32)
     idf = get_idf(vocab)
     token_order = {tok: i for i, tok, in enumerate(sorted(vocab.keys()))}
     for n_doc, doc in enumerate(corpus):
