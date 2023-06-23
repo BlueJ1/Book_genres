@@ -10,24 +10,22 @@ from tf_idf import preprocess_tf_idf
 from mlp import MLP
 import nlpaug.augmenter.word as nlpaw
 from data_augmentation import augment_text
+import os
+import pickle
 
 from time import time
 
-# Here, we load the dataset, removing duplicated instances and keeping only the first summary
-df = pd.read_csv("data.csv")[["summary", "genre"]]
-df = df.drop_duplicates(subset=["summary"], keep="first").reset_index(drop=True)
-
-test_size = 0.2
-test_df = df.sample(frac=test_size, random_state=42)
-train_df = df.drop(test_df.index).reset_index(drop=True)
-# test_one_hot_genres = to_categorical(test_df["genre"])
-
 # Set fixed random number seed
 torch.manual_seed(42)
+np.random.seed(42)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+print("Using device {}.".format(device))
 
 n_epochs = 400
 batch_size = 512
 patience = 20
+test_size = 0.2
 
 if torch.cuda.is_available() or torch.backends.mps.is_available():
     loader_args = dict(shuffle=True, batch_size=batch_size)
@@ -36,70 +34,115 @@ else:
 
 # Set the number of folds
 k_folds = 5
+
+load_data = False
+data_dir = "data"
+
+if not os.path.isdir(data_dir):
+    os.mkdir(data_dir)
+
+if load_data:
+    with open(os.path.join(data_dir, "vocab.npy"), "rb") as f:
+        vocab = pickle.load(f)
+
+    # tf_idf_data
+    tf_idf_data = np.load(os.path.join(data_dir, "tf_idf_data.npy"))
+    del_tf_idf_data_2 = np.load(os.path.join(data_dir, "del_tf_idf_data_2.npy"))
+    del_tf_idf_data_1 = np.load(os.path.join(data_dir, "del_tf_idf_data_1.npy"))
+    synonym_tf_idf_data_2 = np.load(os.path.join(data_dir, "synonym_tf_idf_data_2.npy"))
+    synonym_tf_idf_data_1 = np.load(os.path.join(data_dir, "synonym_tf_idf_data_1.npy"))
+
+    # labels
+    categorical_genres = np.load(os.path.join(data_dir, "categorical_genres.npy"))
+    del_categorical_genres_2 = np.load(os.path.join(data_dir, "del_categorical_genres_2.npy"))
+    del_categorical_genres_1 = np.load(os.path.join(data_dir, "del_categorical_genres_1.npy"))
+    synonym_categorical_genres_2 = np.load(os.path.join(data_dir, "synonym_categorical_genres_2.npy"))
+    synonym_categorical_genres_1 = np.load(os.path.join(data_dir, "synonym_categorical_genres_1.npy"))
+
+    data_length = tf_idf_data.shape[0]
+else:
+    # Here, we load the dataset, removing duplicated instances and keeping only the first summary
+    df = pd.read_csv("data.csv")[["summary", "genre"]]
+    df = df.drop_duplicates(subset=["summary"], keep="first").reset_index(drop=True)
+
+    test_df = df.sample(frac=test_size, random_state=42)
+    train_df = df.drop(test_df.index).reset_index(drop=True)
+    data_length = len(train_df)
+    # test_one_hot_genres = to_categorical(test_df["genre"])
+
+    del_p = 0.1
+    synonym_p = 0.1
+    aug_delete = nlpaw.RandomWordAug(action='delete', aug_p=del_p)
+    aug_synonym = nlpaw.SynonymAug(aug_src='wordnet', aug_p=synonym_p)
+
+    # We first augment the data
+    t = time()
+    print("Augmenting data...")
+    del_augmented_df_2 = augment_text(train_df, aug_delete, num_threads=4, num_times=2)
+    del_augmented_df_1 = augment_text(train_df, aug_delete, num_threads=4, num_times=1)
+
+    synonym_augmented_df_2 = augment_text(train_df, aug_synonym, num_threads=4, num_times=2)
+    synonym_augmented_df_1 = augment_text(train_df, aug_synonym, num_threads=4, num_times=1)
+
+    print("Data augmented! - Time elapsed: {:.2f}s".format(time() - t))
+
+    # We then proceed with the cleaning process
+    t = time()
+    print("Cleaning data...")
+    corpus, vocab = clean_data(train_df["summary"])
+    del_corpus_2, _ = clean_data(del_augmented_df_2["summary"])
+    del_corpus_1, _ = clean_data(del_augmented_df_1["summary"])
+    synonym_corpus_2, _ = clean_data(synonym_augmented_df_2["summary"])
+    synonym_corpus_1, _ = clean_data(synonym_augmented_df_1["summary"])
+    print("Data cleaned! - Time elapsed: {:.2f}s".format(time() - t))
+
+    # This line gets all the frequencies of each word and sorts it in descending order
+    frequencies = sorted(vocab.items(), key=lambda x: x[1], reverse=True)
+    # We choose to only consider the first 10000 most common non-stop words
+    # print("Original vocabulary size: {}".format(len(frequencies)))
+    vocab_size = 15000
+    # Convert back to dictionary
+    vocab = {x[0]: x[1] for x in frequencies[:vocab_size]}
+
+    corpus = get_filtered_corpus(corpus, vocab.keys())
+    del_corpus_2 = get_filtered_corpus(del_corpus_2, vocab.keys())
+    del_corpus_1 = get_filtered_corpus(del_corpus_1, vocab.keys())
+    synonym_corpus_2 = get_filtered_corpus(synonym_corpus_2, vocab.keys())
+    synonym_corpus_1 = get_filtered_corpus(synonym_corpus_1, vocab.keys())
+
+    # Here we store the TF-IDF values of each corpus from the vocabulary
+    tf_idf_data = preprocess_tf_idf(corpus, vocab)
+    del_tf_idf_data_2 = preprocess_tf_idf(del_corpus_2, vocab)
+    del_tf_idf_data_1 = preprocess_tf_idf(del_corpus_1, vocab)
+    synonym_tf_idf_data_2 = preprocess_tf_idf(synonym_corpus_2, vocab)
+    synonym_tf_idf_data_1 = preprocess_tf_idf(synonym_corpus_1, vocab)
+
+    categorical_genres = to_categorical(train_df["genre"])
+    del_categorical_genres_2 = to_categorical(del_augmented_df_2["genre"])
+    del_categorical_genres_1 = to_categorical(del_augmented_df_1["genre"])
+    synonym_categorical_genres_2 = to_categorical(synonym_augmented_df_2["genre"])
+    synonym_categorical_genres_1 = to_categorical(synonym_augmented_df_1["genre"])
+
+    del corpus, del_corpus_2, del_corpus_1, synonym_corpus_2, synonym_corpus_1, df, train_df, \
+        del_augmented_df_2, del_augmented_df_1, synonym_augmented_df_2, synonym_augmented_df_1
+
+    # We save the data to disk, as it takes a long time to augment the data
+    np.save(os.path.join(data_dir, "tf_idf_data.npy"), tf_idf_data)
+    np.save(os.path.join(data_dir, "del_tf_idf_data_2.npy"), del_tf_idf_data_2)
+    np.save(os.path.join(data_dir, "del_tf_idf_data_1.npy"), del_tf_idf_data_1)
+    np.save(os.path.join(data_dir, "synonym_tf_idf_data_2.npy"), synonym_tf_idf_data_2)
+    np.save(os.path.join(data_dir, "synonym_tf_idf_data_1.npy"), synonym_tf_idf_data_1)
+
+    np.save(os.path.join(data_dir, "categorical_genres.npy"), categorical_genres)
+    np.save(os.path.join(data_dir, "del_categorical_genres_2.npy"), del_categorical_genres_2)
+    np.save(os.path.join(data_dir, "del_categorical_genres_1.npy"), del_categorical_genres_1)
+    np.save(os.path.join(data_dir, "synonym_categorical_genres_2.npy"), synonym_categorical_genres_2)
+    np.save(os.path.join(data_dir, "synonym_categorical_genres_1.npy"), synonym_categorical_genres_1)
+
 # Define the K-fold Cross Validator
 kfold = KFold(n_splits=k_folds, shuffle=True)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-print("Using device {}.".format(device))
-
 iteration = 0
-
-del_p = 0.1
-synonym_p = 0.1
-aug_delete = nlpaw.RandomWordAug(action='delete', aug_p=del_p)
-aug_synonym = nlpaw.SynonymAug(aug_src='wordnet', aug_p=synonym_p)
-
-# We first augment the data
-t = time()
-print("Augmenting data...")
-del_augmented_df_2 = augment_text(train_df, aug_delete, num_threads=4, num_times=2)
-del_augmented_df_1 = augment_text(train_df, aug_delete, num_threads=4, num_times=1)
-
-synonym_augmented_df_2 = augment_text(train_df, aug_synonym, num_threads=4, num_times=2)
-synonym_augmented_df_1 = augment_text(train_df, aug_synonym, num_threads=4, num_times=1)
-
-print("Data augmented! - Time elapsed: {:.2f}s".format(time() - t))
-
-# We then proceed with the cleaning process
-
-t = time()
-print("Cleaning data...")
-corpus, vocab = clean_data(train_df["summary"])
-del_corpus_2, _ = clean_data(del_augmented_df_2["summary"])
-del_corpus_1, _ = clean_data(del_augmented_df_1["summary"])
-synonym_corpus_2, _ = clean_data(synonym_augmented_df_2["summary"])
-synonym_corpus_1, _ = clean_data(synonym_augmented_df_1["summary"])
-print("Data cleaned! - Time elapsed: {:.2f}s".format(time() - t))
-
-# This line gets all the frequencies of each word and sorts it in descending order
-frequencies = sorted(vocab.items(), key=lambda x: x[1], reverse=True)
-# We choose to only consider the first 10000 most common non-stop words
-print("Original vocabulary size: {}".format(len(frequencies)))
-vocab_size = 15000
-# Convert back to dictionary
-vocab = {x[0]: x[1] for x in frequencies[:vocab_size]}
-
-corpus = get_filtered_corpus(corpus, vocab.keys())
-del_corpus_2 = get_filtered_corpus(del_corpus_2, vocab.keys())
-del_corpus_1 = get_filtered_corpus(del_corpus_1, vocab.keys())
-synonym_corpus_2 = get_filtered_corpus(synonym_corpus_2, vocab.keys())
-synonym_corpus_1 = get_filtered_corpus(synonym_corpus_1, vocab.keys())
-
-# Here we store the TF-IDF values of each corpus from the vocabulary
-tf_idf_data = preprocess_tf_idf(corpus, vocab)
-del_tf_idf_data_2 = preprocess_tf_idf(del_corpus_2, vocab)
-del_tf_idf_data_1 = preprocess_tf_idf(del_corpus_1, vocab)
-synonym_tf_idf_data_2 = preprocess_tf_idf(synonym_corpus_2, vocab)
-synonym_tf_idf_data_1 = preprocess_tf_idf(synonym_corpus_1, vocab)
-
-categorical_genres = to_categorical(train_df["genre"])
-del_categorical_genres_2 = to_categorical(del_augmented_df_2["genre"])
-del_categorical_genres_1 = to_categorical(del_augmented_df_1["genre"])
-synonym_categorical_genres_2 = to_categorical(synonym_augmented_df_2["genre"])
-synonym_categorical_genres_1 = to_categorical(synonym_augmented_df_1["genre"])
-
-del corpus, del_corpus_2, del_corpus_1, synonym_corpus_2, synonym_corpus_1, train_df, df,\
-    del_augmented_df_2, del_augmented_df_1, synonym_augmented_df_2, synonym_augmented_df_1
 
 
 def objective(hyperparameters):
@@ -116,14 +159,14 @@ def objective(hyperparameters):
     del_num_times = int(hyperparameters["del_num_times"])
     synonym_num_times = int(hyperparameters["synonym_num_times"])
 
-    Train_losses = []
+    train_losses = []
     validation_acc = []
     validation_f1 = []
     validation_losses = []
     confusion_matrices = []
 
     # K-fold Cross Validation model evaluation
-    for fold, (train_ids, validation_ids) in enumerate(kfold.split(np.arange(len(train_df)))):
+    for fold, (train_ids, validation_ids) in enumerate(kfold.split(np.arange(data_length))):
         validation_tf_idf_data = tf_idf_data[validation_ids]
         validation_one_hot_genres = categorical_genres[validation_ids]
 
@@ -163,7 +206,7 @@ def objective(hyperparameters):
         train_loader = torch.utils.data.DataLoader(train_dataset, **loader_args)
         validation_loader = torch.utils.data.DataLoader(validation_dataset, **loader_args)
 
-        Train_loss = []
+        train_loss = []
 
         # Init the neural network
         # model_size = [len(vocab)] + model_size + [10]
@@ -217,7 +260,7 @@ def objective(hyperparameters):
                 current_loss += loss.item()
 
             epoch_loss = current_loss / len(train_loader)
-            Train_loss.append(epoch_loss)
+            train_loss.append(epoch_loss)
             # print(f'Loss after epoch {epoch+1}: {epoch_loss}')
 
             # Check if the F1 score has improved
@@ -275,10 +318,10 @@ def objective(hyperparameters):
 
         confusion = confusion_matrix(y_true, y_pred)
 
-        Train_losses.append(Train_loss)
+        train_losses.append(train_loss)
         confusion_matrices.append(confusion)
 
-    """hyperparameter_df.loc[hyperparameter_set.Index, "train_losses"] = Train_losses
+    """hyperparameter_df.loc[hyperparameter_set.Index, "train_losses"] = train_losses
     hyperparameter_df.loc[hyperparameter_set.Index, "validation_accs"] = validation_acc
     hyperparameter_df.loc[hyperparameter_set.Index, "validation_f1s"] = validation_f1
     hyperparameter_df.loc[hyperparameter_set.Index, "confusion_matrices"] = confusion_matrices
@@ -290,7 +333,7 @@ def objective(hyperparameters):
         'loss': -np.mean(validation_f1),  # remember: HpBandSter always minimizes!
         'status': STATUS_OK,
         'hyperparameters': hyperparameters,
-        'Train_losses': Train_losses,
+        'train_losses': train_losses,
         'validation_accs': validation_acc,
         'validation_f1s': validation_f1,
         'confusion_matrices': confusion_matrices,
