@@ -11,9 +11,10 @@ from mlp import MLP
 import nlpaug.augmenter.word as nlpaw
 from data_augmentation import augment_text
 import os
-import pickle
+import json
 
 from time import time
+from tqdm import tqdm
 
 # Set fixed random number seed
 torch.manual_seed(42)
@@ -35,15 +36,17 @@ else:
 # Set the number of folds
 k_folds = 5
 
-load_data = False
+load_data = True
 data_dir = "data"
 
 if not os.path.isdir(data_dir):
     os.mkdir(data_dir)
 
 if load_data:
-    with open(os.path.join(data_dir, "vocab.npy"), "rb") as f:
-        vocab = pickle.load(f)
+    t = time()
+    print("Loading data...")
+    with open(os.path.join(data_dir, "vocab.json"), "r") as f:
+        vocab = json.load(f)
 
     # tf_idf_data
     tf_idf_data = np.load(os.path.join(data_dir, "tf_idf_data.npy"))
@@ -58,6 +61,7 @@ if load_data:
     del_categorical_genres_1 = np.load(os.path.join(data_dir, "del_categorical_genres_1.npy"))
     synonym_categorical_genres_2 = np.load(os.path.join(data_dir, "synonym_categorical_genres_2.npy"))
     synonym_categorical_genres_1 = np.load(os.path.join(data_dir, "synonym_categorical_genres_1.npy"))
+    print("Data loaded! Time elapsed: {:.2f}s.".format(time() - t))
 
     data_length = tf_idf_data.shape[0]
 else:
@@ -94,7 +98,6 @@ else:
     del_corpus_1, _ = clean_data(del_augmented_df_1["summary"])
     synonym_corpus_2, _ = clean_data(synonym_augmented_df_2["summary"])
     synonym_corpus_1, _ = clean_data(synonym_augmented_df_1["summary"])
-    print("Data cleaned! - Time elapsed: {:.2f}s".format(time() - t))
 
     # This line gets all the frequencies of each word and sorts it in descending order
     frequencies = sorted(vocab.items(), key=lambda x: x[1], reverse=True)
@@ -109,8 +112,10 @@ else:
     del_corpus_1 = get_filtered_corpus(del_corpus_1, vocab.keys())
     synonym_corpus_2 = get_filtered_corpus(synonym_corpus_2, vocab.keys())
     synonym_corpus_1 = get_filtered_corpus(synonym_corpus_1, vocab.keys())
+    print("Data cleaned! - Time elapsed: {:.2f}s".format(time() - t))
 
-    # Here we store the TF-IDF values of each corpus from the vocabulary
+    t = time()
+    print("Convert to tf-idf...")
     tf_idf_data = preprocess_tf_idf(corpus, vocab)
     del_tf_idf_data_2 = preprocess_tf_idf(del_corpus_2, vocab)
     del_tf_idf_data_1 = preprocess_tf_idf(del_corpus_1, vocab)
@@ -122,11 +127,17 @@ else:
     del_categorical_genres_1 = to_categorical(del_augmented_df_1["genre"])
     synonym_categorical_genres_2 = to_categorical(synonym_augmented_df_2["genre"])
     synonym_categorical_genres_1 = to_categorical(synonym_augmented_df_1["genre"])
+    print("Data converted! - Time elapsed: {:.2f}s".format(time() - t))
 
     del corpus, del_corpus_2, del_corpus_1, synonym_corpus_2, synonym_corpus_1, df, train_df, \
         del_augmented_df_2, del_augmented_df_1, synonym_augmented_df_2, synonym_augmented_df_1
 
+    t = time()
+    print("Saving data...")
     # We save the data to disk, as it takes a long time to augment the data
+    with open(os.path.join(data_dir, "vocab.json"), "w+") as f:
+        json.dump(vocab, f)
+
     np.save(os.path.join(data_dir, "tf_idf_data.npy"), tf_idf_data)
     np.save(os.path.join(data_dir, "del_tf_idf_data_2.npy"), del_tf_idf_data_2)
     np.save(os.path.join(data_dir, "del_tf_idf_data_1.npy"), del_tf_idf_data_1)
@@ -138,6 +149,7 @@ else:
     np.save(os.path.join(data_dir, "del_categorical_genres_1.npy"), del_categorical_genres_1)
     np.save(os.path.join(data_dir, "synonym_categorical_genres_2.npy"), synonym_categorical_genres_2)
     np.save(os.path.join(data_dir, "synonym_categorical_genres_1.npy"), synonym_categorical_genres_1)
+    print("Data saved! - Time elapsed: {:.2f}s".format(time() - t))
 
 # Define the K-fold Cross Validator
 kfold = KFold(n_splits=k_folds, shuffle=True)

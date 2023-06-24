@@ -22,7 +22,7 @@ space = {
     'synonym_num_times': hp.quniform('synonym_num_times', 0, 2, 1)
 }
 
-max_evals = 2
+max_evals = 100
 
 # Run optimization
 best = fmin(fn=objective, space=space, algo=tpe.suggest,
