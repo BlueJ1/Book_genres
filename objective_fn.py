@@ -221,7 +221,6 @@ def objective(hyperparameters):
         train_loss = []
 
         # Init the neural network
-        # model_size = [len(vocab)] + model_size + [10]
         network = MLP([len(vocab)] + model_size + [10], dropout)
         network.to(device)
 

@@ -1,17 +1,17 @@
-from hyperopt import fmin, tpe, Trials, hp
+from hyperopt import fmin, tpe, Trials, hp, rand
 import numpy as np
 from objective_fn import objective, iteration
 import pickle
 import os
 
 # Keep track of results
-if os.path.isfile("bayes_trials.bin"):
-    with open("bayes_trials.bin", "rb") as f:
-        bayes_trials = pickle.load(f)
+if os.path.isfile("rand_trials.bin"):
+    with open("rand_trials.bin", "rb") as f:
+        trials = pickle.load(f)
 else:
-    bayes_trials = Trials()
+    trials = Trials()
 
-iteration += len(bayes_trials.trials)
+iteration += len(trials.trials)
 
 space = {
     'learning_rate': hp.loguniform('learning_rate', np.log(1e-5), np.log(1e-2)),
@@ -22,12 +22,12 @@ space = {
     'synonym_num_times': hp.quniform('synonym_num_times', 0, 2, 1)
 }
 
-max_evals = 100
+max_evals = 120
 
 # Run optimization
-best = fmin(fn=objective, space=space, algo=tpe.suggest,
-            max_evals=max_evals, trials=bayes_trials)
+best = fmin(fn=objective, space=space, algo=rand.suggest,
+            max_evals=max_evals, trials=trials)
 print(best)
 
-with open("bayes_trials.bin", "wb+") as f:
-    pickle.dump(bayes_trials, f)
+with open("rand_trials.bin", "wb+") as f:
+    pickle.dump(trials, f)
