@@ -140,17 +140,18 @@ else:
 
 iteration = 0
 
-# retrieving hyperparameters
+# retrieving hyperparameter
+#RAND
+model_size = [32]
+learning_rate = 0.0003557400109264205
+l2 = 6.336724645751509e-6
+dropout = 0.1101374997984408
 
-# model_size = [32]
-# learning_rate = 0.0003557400109264205
-# l2 = 6.336724645751509e-6
-# dropout = 0.1101374997984408
-
-model_size = [128]
-learning_rate = 0.00032449781569679487
-l2 = 5.772855766644525e-6
-dropout = 0.3154875519178951
+#TPE
+# model_size = [128]
+# learning_rate = 0.00032449781569679487
+# l2 = 5.772855766644525e-6
+# dropout = 0.3154875519178951
 
 # data augmentation
 synonym_num_times = 1
@@ -161,12 +162,9 @@ test_f1 = []
 test_losses = []
 confusion_matrices = []
 
-if synonym_num_times == 1:
-    train_tf_idf_data = np.concatenate([train_tf_idf_data, synonym_tf_idf_data_1], axis=0)
-
+train_tf_idf_data = np.concatenate([train_tf_idf_data, synonym_tf_idf_data_1], axis=0)
 train_one_hot_genres = train_categorical_genres
-if synonym_num_times == 1:
-    train_one_hot_genres = np.concatenate([train_one_hot_genres, synonym_categorical_genres_1], axis=0)
+train_one_hot_genres = np.concatenate([train_one_hot_genres, synonym_categorical_genres_1], axis=0)
 
 train_dataset = TF_IDF_Dataset(torch.Tensor(train_tf_idf_data).to(device),
                                torch.LongTensor(train_one_hot_genres).to(device))
@@ -301,5 +299,5 @@ data = {
 }
 
 df = pd.DataFrame(data)
-csv_file = data_dir + '/scrap.csv'
+csv_file = data_dir + '/rand_best_final.csv'
 df.to_csv(csv_file, index=False)
